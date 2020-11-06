@@ -9,74 +9,126 @@
 
 #include "WebServer.h"
 #include "Board.h"
+#include "TcpStreamer.h"
+#include "StatusSender.h"
 
 #include <ESP8266WiFi.h>
 #include <DNSServer.h>
 #include "SPISlave.h"
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
-#include <WiFiClient.h>
 
 #define VERSION "0.0.1"
+#define APP_NAME "OpenBCI"
 
 
-// TcpStreamer ==================================
-namespace tcpStreamer
-{
-  struct Config
-  {
-    IPAddress ipAddress;
-    uint16_t port;  
-  };
-}
-
-class TcpStreamer
-{
-public:
-  Result connect(const tcpStreamer::Config& config);
-  
-private:
-  WiFiClient m_client;    
-};
-
-Result TcpStreamer::connect(const tcpStreamer::Config& config)
-{
-  if(m_client.connect(config.ipAddress, config.port))
-  {
-    m_client.setNoDelay(1);
-    return Result(true, "");
-  }
-  else return Result(false, "Failed to connect to server");
-}
-
-//===============================================
-
-WebServer _webServer(webServer::Config{VERSION, 80});
+WebServer _webServer(webServer::Config{VERSION, APP_NAME, 80});
 Board _board;
 TcpStreamer _tcpStreamer;
+StatusSender _statusSender;
 
+void connect()
+{
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
+
+    const auto runSoftAP = []()
+    {
+        WiFi.softAP(APP_NAME);
+        WiFi.mode(WIFI_AP);
+    };
+
+    if(WiFi.SSID() == "") runSoftAP();
+    else if(false == WiFiManager().autoConnect(APP_NAME)) runSoftAP(); 
+}
+
+String getStreamStatus()
+{
+    StaticJsonDocument<256> jsonDoc;
+    jsonDoc["connected"] = _tcpStreamer.connected();
+    jsonDoc["type"] = "TCP";
+    jsonDoc["ip"] = _tcpStreamer.getConfig().ipAddress.toString();
+    jsonDoc["port"] = _tcpStreamer.getConfig().port;
+    jsonDoc["latency"] = _board.getLatency();
+
+    String output;
+    serializeJson(jsonDoc, output);
+    return output;
+} 
+
+String getFullStatus()
+{
+    return "[{\"type\":\"stream\", \"message\":" + getStreamStatus() + "}]";
+}
+
+struct
+{
+    bool streamConnected = false;
+}
+lastStatus;
+
+String getChangedStatus()
+{
+    const bool connected = _tcpStreamer.connected();
+    if(lastStatus.streamConnected != connected)
+    {
+        lastStatus.streamConnected = connected;
+        return "[{\"type\":\"stream\", \"message\":" + getStreamStatus() + "}]";
+    }
+    return "";
+}
+
+
+//=============================================================================
 void setup()
 {
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
-  _webServer.callbacks().onBoardInfoRequest = []() {  return _board.getInfo(); };
-  _webServer.callbacks().onUdpStreamSetupRequest = []() {  };
-  _webServer.callbacks().onCommandRequest = [](const String& command){ _webServer.notifyCommandResult(Result(true, "")); };
+    Serial.begin(115200);
+    connect();
 
-  _webServer.callbacks().onTcpStreamSetupRequest = [](DynamicJsonDocument& jsonDoc) 
-  {
-    if(false == jsonDoc.containsKey("ip")) return Result(false, "Cannot be find 'ip' element");
-    if(false == jsonDoc.containsKey("port")) return Result(false, "Cannot be find 'port' element");
-    IPAddress address;
-    address.fromString(jsonDoc["ip"].as<String>());
-    const Result result = _tcpStreamer.connect(tcpStreamer::Config{address, jsonDoc["port"]});
-    if(result == false) return result;
-    else return Result(true, _board.getTcpStreamInfo());
-  };
-  
-  _webServer.begin();
+    _webServer.callbacks().onBoardInfoRequest = []() {  return _board.getInfo(); };
+    _webServer.callbacks().onUdpStreamSetupRequest = []() {  };
+    _webServer.callbacks().onCommandRequest = [](const String& command){ _webServer.notifyCommandResult(Result(true, "")); };
+
+    _webServer.callbacks().onTcpStreamSetupRequest = [](const IPAddress& ip, uint16_t port, uint32_t latency) 
+    {
+        const Result result = _tcpStreamer.connect(tcpStreamer::Config{ip, port});
+        if(result == false) return result;
+        else
+        {
+            if(latency > 0) _board.setLatency(latency);
+            return Result(true, getStreamStatus());
+        }
+    };
+
+    _webServer.callbacks().onTcpStreamInfoRequest = []()
+    {
+        StaticJsonDocument<256> jsonDoc;
+        jsonDoc["connected"] = _tcpStreamer.connected();
+        jsonDoc["ip"] = _tcpStreamer.getConfig().ipAddress.toString();
+        jsonDoc["port"] = _tcpStreamer.getConfig().port;
+
+        String result;
+        serializeJson(jsonDoc, result);
+        return result;
+    };
+
+    _webServer.callbacks().onTcpStreamDeleteRequest = []()
+    {
+        _tcpStreamer.disconnect();
+        return getStreamStatus();
+    };
+
+    _statusSender.getCallbacks().onWelcomeMessageRequest = [] { return getFullStatus(); };
+
+    _webServer.begin();
+    _statusSender.begin();
 }
+
 
 void loop()
 {
-  _webServer.process();
+    _webServer.loop();
+    _statusSender.loop();
+
+    String status = getChangedStatus();
+    if(status != "") _statusSender.send(status);
 }

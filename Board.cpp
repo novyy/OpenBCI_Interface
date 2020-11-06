@@ -15,3 +15,14 @@ String Board::getTcpStreamInfo()
 {
   return "{\"connected\":true,\"delimiter\":true,\"ip\":\"192.168.1.111\",\"output\":\"raw\",\"port\":6677,\"latency\":10000}";
 }
+
+void Board::setLatency(uint32 latency)
+{
+  m_latency = latency;
+}
+
+
+uint32 Board::getLatency() const
+{
+    return m_latency;
+}

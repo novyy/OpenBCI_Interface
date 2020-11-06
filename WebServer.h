@@ -15,14 +15,18 @@ namespace webServer
   struct Config
   {
     String appVersion;
+    String appName;
     uint16_t port;
   };
     
   struct Callbacks
   {
     std::function<String()> onBoardInfoRequest;
-    std::function<Result(DynamicJsonDocument&)> onTcpStreamSetupRequest;
+    std::function<Result(const IPAddress& ip, uint16_t port, uint32_t latency)> onTcpStreamSetupRequest;
+    std::function<String()> onTcpStreamInfoRequest;
+    std::function<String()> onTcpStreamDeleteRequest;
     std::function<void()> onUdpStreamSetupRequest;
+    std::function<void()> onUdpStreamInfoRequest;
     std::function<void(const String&)> onCommandRequest;
   };
   
@@ -34,7 +38,7 @@ class WebServer
 public:
   WebServer(const webServer::Config& config);
   void begin();
-  void process();
+  void loop();
   webServer::Callbacks& callbacks();
   void notifyCommandResult(const Result& result);
 
@@ -46,12 +50,14 @@ private:
   void handleWiFiGet();
   void handleBoardGet();
   void handleTcpStreamSetup();
+  void handleTcpStreamDelete();
+  void handleTcpStreamInfo();
   void handleCommandPost();
 
   String getLocalIP();
   
 private:
-  ESP8266WebServer m_server;
+  std::unique_ptr<ESP8266WebServer> m_pServer;
   bool m_startWiFiManagerRequest = false;
   webServer::Callbacks m_callbacks;
   const webServer::Config m_config;
