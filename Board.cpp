@@ -18,6 +18,11 @@ void Board::begin()
 
 }
 
+bool Board::connected() const
+{
+    return m_connected;
+}
+
 void Board::command(const String& command)
 {
     if(command == "b") m_streaming = true;
@@ -26,12 +31,7 @@ void Board::command(const String& command)
 
 String Board::getInfo()
 {
-  return "{\"board_connected\":true,\"board_type\":\"cyton\",\"num_channels\":8,\"gains\":[24,24,24,24,24,24,24,24]}";
-}
-
-String Board::getTcpStreamInfo()
-{
-  return "{\"connected\":true,\"delimiter\":true,\"ip\":\"192.168.1.111\",\"output\":\"raw\",\"port\":6677,\"latency\":10000}";
+  
 }
 
 void Board::onData(const std::function<void(const std::vector<uint8>&)> callback)
@@ -59,5 +59,6 @@ void Board::loop()
         for(int i = 0; i < 24; i++) m_buffer[index++] = 0xff & (value >> ((2 - (bitMove++ % 3)) * 8));
 
         if(m_onDataCallback != nullptr) m_onDataCallback(m_buffer);
+        m_lastSentTime = usec;
     }
 }

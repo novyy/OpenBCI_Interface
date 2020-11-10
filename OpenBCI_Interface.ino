@@ -22,12 +22,17 @@
 #define VERSION "0.0.1"
 #define APP_NAME "OpenBCI"
 
+
 WebServer _webServer(webServer::Config{VERSION, APP_NAME, 80});
 Board _board;
 TcpStreamer _tcpStreamer;
-uint32_t _latency;
-std::vector<uint8> _buffer;
+uint32_t _latency = 0;
+uint32_t _lastPacketSent = 0;
+std::vector<uint8> _packetBuffer;
 std::vector<uint8> _commandResponse;
+std::vector<uint8> _gains;
+
+const uint32 MAX_PACKETS_PER_SEND_TCP = 42;
 
 void connect()
 {
@@ -51,14 +56,28 @@ String getStreamStatus()
     jsonDoc["ip"] = _tcpStreamer.getConfig().ipAddress.toString();
     jsonDoc["port"] = _tcpStreamer.getConfig().port;
     jsonDoc["latency"] = _latency;
-    
     jsonDoc["delimiter"] = true;
     jsonDoc["output"] = "raw";
 
     String output;
     serializeJson(jsonDoc, output);
     return output;
-} 
+}
+
+String getBoardInfo()
+{
+    StaticJsonDocument<256> jsonDoc;
+    jsonDoc["board_connected"] = _board.connected();
+    jsonDoc["board_type"] = "cyton";
+    jsonDoc["num_channels"] = 8;
+
+    JsonArray gains = jsonDoc.createNestedArray("gains");
+    for (const auto& gain : _gains) gains.add(gain);
+
+    String output;
+    serializeJson(jsonDoc, output);
+    return output;
+}
 
 void storeCommandResponse(const std::vector<uint8>& command)
 {
@@ -69,10 +88,28 @@ void storeCommandResponse(const std::vector<uint8>& command)
     }
 }
 
-uint8 parseGain(uint8 value)
+void processPacket(const std::vector<uint8>& data)
+{
+    const uint8 packetType = data[0];
+    _packetBuffer.push_back(cytonMessage::BEGIN);
+    std::copy(std::next(data.begin()), data.end(), std::back_inserter(_packetBuffer));
+    _packetBuffer.push_back(packetType);
+    const uint32_t currentTime = micros();
+    if((currentTime > _lastPacketSent + _latency) || (_packetBuffer.size() >= MAX_PACKETS_PER_SEND_TCP * cytonMessage::SIZE))
+    {
+        _tcpStreamer.send(_packetBuffer);
+        _packetBuffer.clear();
+        _lastPacketSent = currentTime;
+    }
+}
+
+void saveGain(const std::vector<uint8>& data)
 {
     static const std::vector<uint8> GAINS = {1, 2, 4, 6, 8, 12, 24};
-    return (value > GAINS.size() - 1) ? GAINS[value] : GAINS[GAINS.size() - 1];
+    static const auto parseGain = [](uint8 value) { return (value > GAINS.size() - 1) ? GAINS[value] : GAINS[GAINS.size() - 1]; };
+
+    _gains.clear();
+    for(uint32_t i = 2; i < data.size(); i++) _gains.push_back(parseGain(data[i]));
 }
 
 //=============================================================================
@@ -82,7 +119,7 @@ uint8 parseGain(uint8 value)
     
     connect();
 
-    _webServer.callbacks().onBoardInfoRequest = []() {  return _board.getInfo(); };
+    _webServer.callbacks().onBoardInfoRequest = []() {  return getBoardInfo(); };
     _webServer.callbacks().onUdpStreamSetupRequest = []() {  };
     _webServer.callbacks().onCommandRequest = [](const String& command)
     {
@@ -110,7 +147,6 @@ uint8 parseGain(uint8 value)
 
         String result;
         serializeJson(jsonDoc, result);
-        Serial.println(ESP.getFreeHeap(),DEC);
         return result;
     };
 
@@ -134,22 +170,8 @@ uint8 parseGain(uint8 value)
 
     _board.onData([](const std::vector<uint8>& data)
     {
-        if((data.at(0) & 0xF0) == cytonMessage::END)
-        {
-            const uint8 packetType = data[0];
-            std::copy(data.begin(), data.end(), std::back_inserter(_buffer));
-            _buffer[0] = cytonMessage::BEGIN;
-            _buffer.push_back(packetType);
-            _tcpStreamer.send(_buffer);
-            _buffer.clear();
-        }
-        else if((data.at(0) == spiMessage::GAIN) && (data.at(1) == spiMessage::GAIN))
-        {
-            std::vector<uint8> gains;
-            gains.reserve(data.size() - 2);
-            for(uint32_t i = 2; i < data.size(); i++) gains.push_back(parseGain(data[i]));
-            _tcpStreamer.send(gains);
-        }
+        if((data.at(0) & 0xF0) == cytonMessage::END) processPacket(data);
+        else if((data.at(0) == spiMessage::GAIN) && (data.at(1) == spiMessage::GAIN)) saveGain(data);
         else if(data.at(0) == spiMessage::MULTI) storeCommandResponse(data);
         else if(data.at(0) == spiMessage::LAST)
         {

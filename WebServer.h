@@ -1,7 +1,7 @@
 
 // Name: WebServer.h
 // Date: 04-Nov-2020
-// Purpose:
+// Purpose: Handle REST requests
 // Author: Piotr Nowinski
 
 #include "Result.h"

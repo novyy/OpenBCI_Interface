@@ -1,6 +1,6 @@
 // Name: Board.h
 // Date: 04-Nov-2020
-// Purpose: Streams data to tcp server
+// Purpose: Streams Cyton data to tcp server
 // Author: Piotr Nowinski
 
 #include "Result.h"

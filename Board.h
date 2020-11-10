@@ -1,7 +1,7 @@
 
 // Name: Board.h
 // Date: 04-Nov-2020
-// Purpose:
+// Purpose: Cyton board communication interface
 // Author: Piotr Nowinski
 
 #include <Arduino.h>
@@ -19,7 +19,7 @@ public:
     void begin();
     void loop();
     String getInfo();
-    String getTcpStreamInfo();
+    bool connected() const;
     void command(const String& command);
     void onData(const std::function<void(const std::vector<uint8>&)> callback);
 
@@ -31,5 +31,6 @@ private:
     uint32 m_lastSentTime = 0;
     uint8 m_seqNum = 0;
     bool m_streaming = false;
+    bool m_connected = false;
 };
 

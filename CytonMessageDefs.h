@@ -1,3 +1,8 @@
+// Name: OpenBCI_Interface.ino
+// Date: 04-Nov-2020
+// Purpose:
+// Author: Piotr Nowinski
+
 #include <Arduino.h>
 
 namespace cytonMessage
