@@ -1,7 +1,7 @@
 
 // Name: WebServer.h
 // Date: 04-Nov-2020
-// Purpose:
+// Purpose: General result plus description
 // Author: Piotr Nowinski
 #pragma once
 

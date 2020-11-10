@@ -1,6 +1,6 @@
 // Name: Board.cpp
 // Date: 04-Nov-2020
-// Purpose: Streams data to tcp server
+// Purpose: Streams Cyton data to tcp server
 // Author: Piotr Nowinski
 
 #include "TcpStreamer.h"
@@ -32,11 +32,12 @@ void TcpStreamer::disconnect()
   m_pClient.reset();
 }
 
-Result TcpStreamer::send(const std::vector<uint8>& buffer)
+
+Result TcpStreamer::send(const uint8_t* pData, size_t size)
 {
   if((m_pClient == nullptr) || (m_pClient->connected() == false)) return Result(false, "TCP client not initilaized");
-  const bool result = m_pClient->write(buffer.data(), buffer.size());
-  if(result != buffer.size()) return Result(false, String("TCP client doesn't write enought bytes. ") + String(result) + " out of " + String(buffer.size()));
+  const bool result = m_pClient->write(pData, size);
+  if(result != size) return Result(false, String("TCP client doesn't write enought bytes. ") + String(result) + " out of " + String(size));
   else Result();
 }
 

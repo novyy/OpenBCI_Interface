@@ -10,7 +10,8 @@
 #include "WebServer.h"
 #include "Board.h"
 #include "TcpStreamer.h"
-#include "StatusSender.h"
+#include "CytonMessageDefs.h"
+#include "SpiMessageDefs.h"
 
 #include <ESP8266WiFi.h>
 #include <DNSServer.h>
@@ -21,11 +22,12 @@
 #define VERSION "0.0.1"
 #define APP_NAME "OpenBCI"
 
-
 WebServer _webServer(webServer::Config{VERSION, APP_NAME, 80});
 Board _board;
 TcpStreamer _tcpStreamer;
-StatusSender _statusSender;
+uint32_t _latency;
+std::vector<uint8> _buffer;
+std::vector<uint8> _commandResponse;
 
 void connect()
 {
@@ -48,45 +50,45 @@ String getStreamStatus()
     jsonDoc["type"] = "TCP";
     jsonDoc["ip"] = _tcpStreamer.getConfig().ipAddress.toString();
     jsonDoc["port"] = _tcpStreamer.getConfig().port;
-    jsonDoc["latency"] = _board.getLatency();
+    jsonDoc["latency"] = _latency;
+    
+    jsonDoc["delimiter"] = true;
+    jsonDoc["output"] = "raw";
 
     String output;
     serializeJson(jsonDoc, output);
     return output;
 } 
 
-String getFullStatus()
+void storeCommandResponse(const std::vector<uint8>& command)
 {
-    return "[{\"type\":\"stream\", \"message\":" + getStreamStatus() + "}]";
-}
-
-struct
-{
-    bool streamConnected = false;
-}
-lastStatus;
-
-String getChangedStatus()
-{
-    const bool connected = _tcpStreamer.connected();
-    if(lastStatus.streamConnected != connected)
+    for(uint32_t i = 1; i < command.size(); i++)
     {
-        lastStatus.streamConnected = connected;
-        return "[{\"type\":\"stream\", \"message\":" + getStreamStatus() + "}]";
+        if(command[i] == 0x00) break;
+        _commandResponse.push_back(command[i]);
     }
-    return "";
 }
 
+uint8 parseGain(uint8 value)
+{
+    static const std::vector<uint8> GAINS = {1, 2, 4, 6, 8, 12, 24};
+    return (value > GAINS.size() - 1) ? GAINS[value] : GAINS[GAINS.size() - 1];
+}
 
 //=============================================================================
-void setup()
+ void setup()
 {
     Serial.begin(115200);
+    
     connect();
 
     _webServer.callbacks().onBoardInfoRequest = []() {  return _board.getInfo(); };
     _webServer.callbacks().onUdpStreamSetupRequest = []() {  };
-    _webServer.callbacks().onCommandRequest = [](const String& command){ _webServer.notifyCommandResult(Result(true, "")); };
+    _webServer.callbacks().onCommandRequest = [](const String& command)
+    {
+        _board.command(command);
+        _webServer.notifyCommandResult(Result(true, ""));
+    };
 
     _webServer.callbacks().onTcpStreamSetupRequest = [](const IPAddress& ip, uint16_t port, uint32_t latency) 
     {
@@ -94,12 +96,12 @@ void setup()
         if(result == false) return result;
         else
         {
-            if(latency > 0) _board.setLatency(latency);
+            if(latency > 0) _latency = latency;
             return Result(true, getStreamStatus());
         }
     };
 
-    _webServer.callbacks().onTcpStreamInfoRequest = []()
+    _webServer.callbacks().onTcpStreamInfoRequest = []
     {
         StaticJsonDocument<256> jsonDoc;
         jsonDoc["connected"] = _tcpStreamer.connected();
@@ -108,27 +110,61 @@ void setup()
 
         String result;
         serializeJson(jsonDoc, result);
+        Serial.println(ESP.getFreeHeap(),DEC);
         return result;
     };
 
-    _webServer.callbacks().onTcpStreamDeleteRequest = []()
+    _webServer.callbacks().onTcpStreamDeleteRequest = []
     {
         _tcpStreamer.disconnect();
         return getStreamStatus();
     };
 
-    _statusSender.getCallbacks().onWelcomeMessageRequest = [] { return getFullStatus(); };
+    _webServer.callbacks().onStreamStartRequest = []
+    {
+        _board.command("b");
+        return Result(true, "{\"command\": \"b\"}");
+    };
+
+    _webServer.callbacks().onStreamStopRequest = []
+    {
+        _board.command("s");
+        return Result(true, "{\"command\": \"s\"}");
+    };
+
+    _board.onData([](const std::vector<uint8>& data)
+    {
+        if((data.at(0) & 0xF0) == cytonMessage::END)
+        {
+            const uint8 packetType = data[0];
+            std::copy(data.begin(), data.end(), std::back_inserter(_buffer));
+            _buffer[0] = cytonMessage::BEGIN;
+            _buffer.push_back(packetType);
+            _tcpStreamer.send(_buffer);
+            _buffer.clear();
+        }
+        else if((data.at(0) == spiMessage::GAIN) && (data.at(1) == spiMessage::GAIN))
+        {
+            std::vector<uint8> gains;
+            gains.reserve(data.size() - 2);
+            for(uint32_t i = 2; i < data.size(); i++) gains.push_back(parseGain(data[i]));
+            _tcpStreamer.send(gains);
+        }
+        else if(data.at(0) == spiMessage::MULTI) storeCommandResponse(data);
+        else if(data.at(0) == spiMessage::LAST)
+        {
+            storeCommandResponse(data);
+            _tcpStreamer.send(_commandResponse);
+            _commandResponse.clear();
+        } 
+    });
 
     _webServer.begin();
-    _statusSender.begin();
+    _board.begin();
 }
-
 
 void loop()
 {
     _webServer.loop();
-    _statusSender.loop();
-
-    String status = getChangedStatus();
-    if(status != "") _statusSender.send(status);
+    _board.loop();
 }

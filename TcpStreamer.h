@@ -25,10 +25,20 @@ public:
   Result connect(const tcpStreamer::Config& config);
   void disconnect();
   bool connected();
-  Result send(const std::vector<uint8>& buffer);
   const tcpStreamer::Config& getConfig() const;
+
+  template<class Container>
+  typename std::enable_if<std::is_same<typename Container::value_type, uint8>::value, Result>::type send(const Container& buffer);
+
+  Result send(const uint8_t* pData, size_t size);
   
 private:
   std::unique_ptr<WiFiClient> m_pClient;
   tcpStreamer::Config m_config;
 };
+
+template<class Container>
+typename std::enable_if<std::is_same<typename Container::value_type, uint8>::value, Result>::type TcpStreamer::send(const Container& buffer)
+{
+    return send(buffer.data(), buffer.size());
+}

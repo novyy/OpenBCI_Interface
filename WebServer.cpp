@@ -1,7 +1,7 @@
 
 // Name: WebServer.cpp
 // Date: 04-Nov-2020
-// Purpose:
+// Purpose: Handle REST requests
 // Author: Piotr Nowinski
 
 #include "WebServer.h"
@@ -65,11 +65,11 @@ void WebServer::registerHandlers()
   m_pServer->on("/udp", HTTP_POST, [this]() { });
   m_pServer->on("/udp", HTTP_OPTIONS, [this]() { sendHeadersForOptions(); });
   m_pServer->on("/udp", HTTP_DELETE, [this]() { });
-  m_pServer->on("/stream/start", HTTP_GET, [this]() { });
-  m_pServer->on("/stream/start", HTTP_POST, [this]() { });
+  m_pServer->on("/stream/start", HTTP_GET, [this]() { handleStreamStart(); });
+  m_pServer->on("/stream/start", HTTP_POST, [this]() { handleStreamStart(); });
   m_pServer->on("/stream/start", HTTP_OPTIONS, [this]() { sendHeadersForOptions(); });
-  m_pServer->on("/stream/stop", HTTP_GET, [this]() { });
-  m_pServer->on("/stream/stop", HTTP_POST, [this]() { });
+  m_pServer->on("/stream/stop", HTTP_GET, [this]() { handleStreamStop(); });
+  m_pServer->on("/stream/stop", HTTP_POST, [this]() { handleStreamStop(); });
   m_pServer->on("/stream/stop", HTTP_OPTIONS, [this]() { sendHeadersForOptions(); });
   m_pServer->on("/version", HTTP_GET, [this]() { handleVersionGet(); });
   m_pServer->on("/wifi", HTTP_GET, [this]() { handleWiFiGet(); });
@@ -158,6 +158,22 @@ void WebServer::handleTcpStreamDelete()
 {
   if(m_callbacks.onTcpStreamDeleteRequest == nullptr) m_pServer->send(404, "text/json", errorToJson(F("TCP stream delete not available")));
   else m_pServer->send(200, "text/json", m_callbacks.onTcpStreamDeleteRequest());
+}
+
+void WebServer::handleStreamStop()
+{
+    if(m_callbacks.onStreamStopRequest == nullptr) return m_pServer->send(404, "text/json", errorToJson(F("TCP stream stop not available")));
+    const Result result = m_callbacks.onStreamStopRequest();
+    if(result) m_pServer->send(200, "text/json", result.message());
+    else m_pServer->send(400, "text/json", errorToJson(result.message()));
+}
+
+void WebServer::handleStreamStart()
+{
+    if(m_callbacks.onStreamStartRequest == nullptr) return m_pServer->send(404, "text/json", errorToJson(F("TCP stream start not available")));
+    const Result result = m_callbacks.onStreamStartRequest();
+    if(result) m_pServer->send(200, "text/json", result.message());
+    else m_pServer->send(400, "text/json", errorToJson(result.message()));
 }
 
 void WebServer::handleCommandPost()

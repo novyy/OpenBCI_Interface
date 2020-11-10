@@ -28,6 +28,8 @@ namespace webServer
     std::function<void()> onUdpStreamSetupRequest;
     std::function<void()> onUdpStreamInfoRequest;
     std::function<void(const String&)> onCommandRequest;
+    std::function<Result()> onStreamStartRequest;
+    std::function<Result()> onStreamStopRequest;
   };
   
   static const uint32_t JSON_BUFFER = 256;
@@ -53,6 +55,8 @@ private:
   void handleTcpStreamDelete();
   void handleTcpStreamInfo();
   void handleCommandPost();
+  void handleStreamStart();
+  void handleStreamStop();
 
   String getLocalIP();
   
