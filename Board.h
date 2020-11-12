@@ -7,9 +7,15 @@
 #include <Arduino.h>
 #include <vector>
 #include <functional>
+
 namespace board
 {
-    static const uint32_t MESSAGE_SIZE = 32;
+    struct Callbacks
+    {
+        std::function<void(const std::vector<uint8>&)> onData;
+        std::function<void(const std::vector<uint8>&)> onGains;
+        std::function<void(const String&)> onCommandResult;
+    };
 }
 
 class Board
@@ -18,19 +24,28 @@ public:
     Board();
     void begin();
     void loop();
-    String getInfo();
     bool connected() const;
     void command(const String& command);
-    void onData(const std::function<void(const std::vector<uint8>&)> callback);
+    board::Callbacks& callbacks();
+    
+private:
+    void processPacket(const std::vector<uint8>& data);
+    void processSamples(const std::vector<uint8>& data);
+    void processGains(const std::vector<uint8>& data);
+    void storeCommandResponse(const std::vector<uint8>& command);
 
 private:
     std::vector<uint8> m_buffer;
-    std::function<void(const std::vector<uint8>&)> m_onDataCallback;
-
+    String m_commandResult;
+    board::Callbacks m_callbacks;
+    
     // wave mock
-    uint32 m_lastSentTime = 0;
+    std::vector<uint8> m_spiSlaveBuffer;
+    uint32 m_nextSentTime = 0;
     uint8 m_seqNum = 0;
     bool m_streaming = false;
     bool m_connected = false;
+    bool m_responseExpected = false;
+    uint32_t m_packetInterval = 0;
 };
 

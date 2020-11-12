@@ -17,7 +17,7 @@ Result TcpStreamer::connect(const tcpStreamer::Config& config)
     auto pClient = std::unique_ptr<WiFiClient>(new WiFiClient());
     if(pClient->connect(config.ipAddress, config.port))
     {
-        pClient->setNoDelay(1);
+        pClient->setNoDelay(true);
         m_config = config;
         m_pClient = std::move(pClient);
         return Result();
@@ -32,13 +32,13 @@ void TcpStreamer::disconnect()
   m_pClient.reset();
 }
 
-
 Result TcpStreamer::send(const uint8_t* pData, size_t size)
 {
-  if((m_pClient == nullptr) || (m_pClient->connected() == false)) return Result(false, "TCP client not initilaized");
-  const bool result = m_pClient->write(pData, size);
-  if(result != size) return Result(false, String("TCP client doesn't write enought bytes. ") + String(result) + " out of " + String(size));
-  else Result();
+    if((m_pClient == nullptr) || (m_pClient->connected() == false)) return Result(false, "TCP client not initilaized");
+
+    const bool result = m_pClient->write(pData, size);
+    if(result != size) return Result(false, String("TCP client doesn't write enought bytes. ") + String(result) + " out of " + String(size));
+    else Result();
 }
 
 const tcpStreamer::Config& TcpStreamer::getConfig() const
