@@ -12,25 +12,26 @@
 
 namespace webServer
 {
-  struct Config
-  {
-    String appVersion;
-    String appName;
-    uint16_t port;
-  };
+    struct Config
+    {
+        String appVersion;
+        String appName;
+        uint16_t port;
+    };
     
-  struct Callbacks
-  {
-    std::function<String()> onBoardInfoRequest;
-    std::function<Result(const IPAddress& ip, uint16_t port, uint32_t latency)> onTcpStreamSetupRequest;
-    std::function<String()> onTcpStreamInfoRequest;
-    std::function<String()> onTcpStreamDeleteRequest;
-    std::function<void()> onUdpStreamSetupRequest;
-    std::function<void()> onUdpStreamInfoRequest;
-    std::function<void(const String&)> onCommandRequest;
-    std::function<Result()> onStreamStartRequest;
-    std::function<Result()> onStreamStopRequest;
-  };
+    struct Callbacks
+    {
+        std::function<String()> onBoardInfoRequest;
+        std::function<String()> onAllInfoRequest;
+        std::function<Result(const IPAddress& ip, uint16_t port, uint32_t latency)> onTcpStreamSetupRequest;
+        std::function<String()> onTcpStreamInfoRequest;
+        std::function<String()> onTcpStreamDeleteRequest;
+        std::function<Result(const IPAddress& ip, uint16_t port, uint32_t latency)> onUdpStreamSetupRequest;
+        std::function<void()> onUdpStreamInfoRequest;
+        std::function<void(const String&)> onCommandRequest;
+        std::function<Result()> onStreamStartRequest;
+        std::function<Result()> onStreamStopRequest;
+    };
   
   static const uint32_t JSON_BUFFER = 256;
 }
@@ -43,6 +44,7 @@ public:
   void loop();
   webServer::Callbacks& callbacks();
   void notifyCommandResult(const Result& result);
+  String getLocalIP();
 
 private:
   void registerHandlers();
@@ -52,13 +54,14 @@ private:
   void handleWiFiGet();
   void handleBoardGet();
   void handleTcpStreamSetup();
+  void handleUdpStreamSetup();
   void handleTcpStreamDelete();
   void handleTcpStreamInfo();
   void handleCommandPost();
   void handleStreamStart();
   void handleStreamStop();
-
-  String getLocalIP();
+  void handleGetAllStatus();
+  Result parseStreamParams(const String& input, IPAddress& ip, uint16& port, uint32& latency);
   
 private:
   std::unique_ptr<ESP8266WebServer> m_pServer;

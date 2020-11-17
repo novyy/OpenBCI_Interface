@@ -1,4 +1,4 @@
-// Name: Board.cpp
+// Name: TcpStreamer.cpp
 // Date: 04-Nov-2020
 // Purpose: Streams Cyton data to tcp server
 // Author: Piotr Nowinski
@@ -7,18 +7,18 @@
 
 TcpStreamer::~TcpStreamer()
 {
-  if(m_pClient != nullptr) m_pClient->stop();
+    if(m_pClient != nullptr) m_pClient->stop();
 }
 
-Result TcpStreamer::connect(const tcpStreamer::Config& config)
+Result TcpStreamer::connect(const Endpoint& endpoint)
 {
     if(m_pClient != nullptr) m_pClient->stop();
 
     auto pClient = std::unique_ptr<WiFiClient>(new WiFiClient());
-    if(pClient->connect(config.ipAddress, config.port))
+    if(pClient->connect(endpoint.ipAddress, endpoint.port))
     {
         pClient->setNoDelay(true);
-        m_config = config;
+        m_remoteEndpoint = endpoint;
         m_pClient = std::move(pClient);
         return Result();
     }
@@ -41,9 +41,9 @@ Result TcpStreamer::send(const uint8_t* pData, size_t size)
     else Result();
 }
 
-const tcpStreamer::Config& TcpStreamer::getConfig() const
+const Endpoint& TcpStreamer::getRemoteEndpoint() const
 {
-  return m_config;
+  return m_remoteEndpoint;
 }
 
 bool TcpStreamer::connected()

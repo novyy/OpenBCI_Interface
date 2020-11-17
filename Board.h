@@ -3,6 +3,7 @@
 // Date: 04-Nov-2020
 // Purpose: Cyton board communication interface
 // Author: Piotr Nowinski
+#pragma once
 
 #include <Arduino.h>
 #include <vector>
@@ -29,14 +30,15 @@ public:
     board::Callbacks& callbacks();
     
 private:
-    void processPacket(const std::vector<uint8>& data);
-    void processSamples(const std::vector<uint8>& data);
-    void processGains(const std::vector<uint8>& data);
-    void storeCommandResponse(const std::vector<uint8>& command);
+    void processPacket(const uint8* pData, uint32 size);
+    void processSamples(const uint8* pData, uint32 size);
+    void processGains(const uint8* pData, uint32 size);
+    void storeCommandResponse(const uint8* pData, uint32 size);
 
 private:
     std::vector<uint8> m_buffer;
     String m_commandResult;
+    String m_currentComman;
     board::Callbacks m_callbacks;
     
     // wave mock
@@ -44,8 +46,9 @@ private:
     uint32 m_nextSentTime = 0;
     uint8 m_seqNum = 0;
     bool m_streaming = false;
-    bool m_connected = false;
-    bool m_responseExpected = false;
+    bool m_connected = true;
+    String m_response;
     uint32_t m_packetInterval = 0;
+    bool m_gainSet = false;
 };
 

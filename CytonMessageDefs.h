@@ -2,6 +2,7 @@
 // Date: 04-Nov-2020
 // Purpose:
 // Author: Piotr Nowinski
+#pragma once
 
 #include <Arduino.h>
 

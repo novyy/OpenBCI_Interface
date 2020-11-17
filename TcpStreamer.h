@@ -4,28 +4,20 @@
 // Author: Piotr Nowinski
 
 #include "Result.h"
+#include "Endpoint.h"
 
 #include <Arduino.h>
 #include <WiFiClient.h>
 #include <vector>
 
-namespace tcpStreamer
-{
-  struct Config
-  {
-    IPAddress ipAddress;
-    uint16_t port;  
-  };
-}
-
 class TcpStreamer
 {
 public:
   ~TcpStreamer();
-  Result connect(const tcpStreamer::Config& config);
+  Result connect(const Endpoint& endpoint);
   void disconnect();
   bool connected();
-  const tcpStreamer::Config& getConfig() const;
+  const Endpoint& getRemoteEndpoint() const;
 
   template<class Container>
   typename std::enable_if<std::is_same<typename Container::value_type, uint8>::value, Result>::type send(const Container& buffer);
@@ -34,7 +26,7 @@ public:
   
 private:
   std::unique_ptr<WiFiClient> m_pClient;
-  tcpStreamer::Config m_config;
+  Endpoint m_remoteEndpoint;
 };
 
 template<class Container>

@@ -62,9 +62,10 @@ void WebServer::registerHandlers()
   m_pServer->on("/tcp", HTTP_OPTIONS, [this]() { });
   m_pServer->on("/tcp", HTTP_DELETE, [this]() { });
   m_pServer->on("/udp", HTTP_GET, [this]() { });
-  m_pServer->on("/udp", HTTP_POST, [this]() { });
+  m_pServer->on("/udp", HTTP_POST, [this]() { handleUdpStreamSetup(); });
   m_pServer->on("/udp", HTTP_OPTIONS, [this]() { sendHeadersForOptions(); });
   m_pServer->on("/udp", HTTP_DELETE, [this]() { });
+  m_pServer->on("/all", HTTP_GET, [this]() { handleGetAllStatus(); });
   m_pServer->on("/stream/start", HTTP_GET, [this]() { handleStreamStart(); });
   m_pServer->on("/stream/start", HTTP_POST, [this]() { handleStreamStart(); });
   m_pServer->on("/stream/start", HTTP_OPTIONS, [this]() { sendHeadersForOptions(); });
@@ -110,6 +111,17 @@ void WebServer::handleVersionGet()
   m_pServer->send(200, "text/html", m_config.appVersion);
 }
 
+void WebServer::handleGetAllStatus()
+{
+    if(m_callbacks.onAllInfoRequest != nullptr)
+    {
+        const String info = m_callbacks.onAllInfoRequest();
+        m_pServer->send(200, "text/json", info);
+    }
+    else m_pServer->send(404, F("text/json"), errorToJson(F("All info not available")));
+    
+}
+
 void WebServer::handleWiFiGet()
 {
   m_startWiFiManagerRequest = true;
@@ -125,27 +137,52 @@ void WebServer::handleBoardGet()
   else m_pServer->send(404, F("text/json"), errorToJson(F("Board info not available")));
 }
 
+Result WebServer::parseStreamParams(const String& input, IPAddress& ip, uint16& port, uint32& latency)
+{
+    DynamicJsonDocument jsonDoc(webServer::JSON_BUFFER);
+    const DeserializationError err = deserializeJson(jsonDoc, input);
+
+    if(err) return Result(false, errorToJson(err.c_str()));
+     
+    if(false == jsonDoc.containsKey("ip")) return Result(false, errorToJson("Cannot find 'ip' element"));
+    if(false == jsonDoc.containsKey("port")) return Result(false, errorToJson("Cannot find 'port' element"));
+    
+    if(false == ip.fromString(jsonDoc["ip"].as<String>())) return Result(false, errorToJson("Invalid format of IP address"));
+
+    latency = (jsonDoc.containsKey("latency") ? jsonDoc["latency"] : 0);
+    port = jsonDoc["port"];
+
+    return Result();
+}
+
 void WebServer::handleTcpStreamSetup() 
 {
     if(m_callbacks.onTcpStreamSetupRequest == nullptr) return m_pServer->send(404, F("text/json"), errorToJson(F("TCP stream not available")));
     
-    DynamicJsonDocument jsonDoc(webServer::JSON_BUFFER);
-    const DeserializationError err = deserializeJson(jsonDoc, m_pServer->arg(0));
-
-    if(err) return m_pServer->send(400, F("text/json"), errorToJson(err.c_str()));
-     
-    if(false == jsonDoc.containsKey("ip")) return m_pServer->send(400, F("text/json"), errorToJson("Cannot find 'ip' element"));
-    if(false == jsonDoc.containsKey("port")) return m_pServer->send(400, F("text/json"), errorToJson("Cannot find 'port' element"));
-    
     IPAddress ip;
-    if(false == ip.fromString(jsonDoc["ip"].as<String>())) return m_pServer->send(400, F("text/json"), errorToJson("Invalid format of IP address"));
-
-    const uint32_t latency = (jsonDoc.containsKey("latency") ? jsonDoc["latency"] : 0);
+    uint16 port;
+    uint32 latency;
+    const Result paringResult = parseStreamParams(m_pServer->arg(0), ip, port, latency);
+    if(paringResult == false) m_pServer->send(400, "text/json", paringResult.message());
     
-    const Result result = m_callbacks.onTcpStreamSetupRequest(ip, jsonDoc["port"], latency);
+    const Result result = m_callbacks.onTcpStreamSetupRequest(ip, port, latency);
     if(result) m_pServer->send(200, "text/json", result.message());
     else m_pServer->send(400, "text/json", errorToJson(result.message()));
-  
+}
+
+void WebServer::handleUdpStreamSetup()
+{
+    if(m_callbacks.onUdpStreamSetupRequest == nullptr) return m_pServer->send(404, F("text/json"), errorToJson(F("UDP stream not available")));
+
+    IPAddress ip;
+    uint16 port;
+    uint32 latency;
+    const Result paringResult = parseStreamParams(m_pServer->arg(0), ip, port, latency);
+    if(paringResult == false) m_pServer->send(400, "text/json", paringResult.message());
+    
+    const Result result = m_callbacks.onUdpStreamSetupRequest(ip, port, latency);
+    if(result) m_pServer->send(200, "text/json", result.message());
+    else m_pServer->send(400, "text/json", errorToJson(result.message()));
 }
 
 void WebServer::handleTcpStreamInfo()
